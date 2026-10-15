@@ -172,6 +172,7 @@ let package = Package(
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "CustomDump", package: "swift-custom-dump"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: swiftSettings,
         ),
