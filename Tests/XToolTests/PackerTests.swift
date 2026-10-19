@@ -35,3 +35,9 @@ import Foundation
     let changed = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date
     #expect(changed != past)
 }
+
+@Test func compilerRTLibraryNameFollowsBuildTriple() {
+    #expect(Packer.compilerRTLibraryName(for: "arm64-apple-ios") == "libclang_rt.ios.a")
+    #expect(Packer.compilerRTLibraryName(for: "arm64-apple-ios17.0-simulator") == "libclang_rt.iossim.a")
+    #expect(Packer.compilerRTLibraryName(for: "arm64-apple-macosx") == "libclang_rt.osx.a")
+}
