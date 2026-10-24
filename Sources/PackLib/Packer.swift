@@ -270,6 +270,8 @@ extension Plan.Product {
             .unsafeFlags([
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
             ]),
+            // Release builds leave out local symbols and debug info, as Xcode's do
+            .unsafeFlags(["-Xlinker", "-x", "-Xlinker", "-S"], .when(configuration: .release)),
         ]
         """
         case .appExtension: """
@@ -284,6 +286,8 @@ extension Plan.Product {
                 // ...as well as our own
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
             ]),
+            // Release builds leave out local symbols and debug info, as Xcode's do
+            .unsafeFlags(["-Xlinker", "-x", "-Xlinker", "-S"], .when(configuration: .release)),
         ]
         """
         }
