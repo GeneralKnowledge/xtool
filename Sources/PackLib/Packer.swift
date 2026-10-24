@@ -11,7 +11,7 @@ public struct Packer: Sendable {
         self.buildSettings = buildSettings
     }
 
-    private func build() async throws {
+    private func build(sdk: PlatformSDK?) async throws {
         let xtoolDir = URL(fileURLWithPath: "xtool")
         let packageDir = xtoolDir.appendingPathComponent(".xtool-tmp")
         // Update the builder package in place rather than recreating it: fresh
@@ -54,7 +54,7 @@ public struct Packer: Sendable {
                             dependencies: [
                                 .product(name: "\($0.product)", package: "RootPackage"),
                             ],
-                            linkerSettings: \($0.linkerSettings)
+                            linkerSettings: \($0.linkerSettings(sdk: sdk))
                         )
                         """
                     }
@@ -102,7 +102,15 @@ public struct Packer: Sendable {
     }
 
     public func pack() async throws -> URL {
-        try await build()
+        let sdk: PlatformSDK?
+        do {
+            sdk = try await PlatformSDK.current(triple: buildSettings.triple)
+        } catch {
+            print("warning: Could not read the platform SDK version, the app will record its deployment target instead: \(error)")
+            sdk = nil
+        }
+
+        try await build(sdk: sdk)
 
         let output = try TemporaryDirectory(name: "\(plan.app.product).app")
 
@@ -263,18 +271,32 @@ public struct Packer: Sendable {
 }
 
 extension Plan.Product {
-    fileprivate var linkerSettings: String {
+    fileprivate func linkerSettings(sdk: PlatformSDK?) -> String {
+        // Without this the linker records the deployment target as the SDK version,
+        // and iOS runs the app in compatibility mode (e.g. without Liquid Glass).
+        // Only needed off macOS, where Xcode's toolchain passes the SDK to clang itself
+        #if os(macOS)
+        let platformVersion = ""
+        #else
+        let platformVersion = sdk.map {
+            """
+                    "-Xlinker", "-platform_version", "-Xlinker", "\($0.platform.linkerName)",
+                    "-Xlinker", "\(deploymentTarget)", "-Xlinker", "\($0.version)",
+
+            """
+        } ?? ""
+        #endif
         switch self.type {
-        case .application: """
+        case .application: return """
         [
             .unsafeFlags([
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
-            ]),
+        \(platformVersion)    ]),
             // Release builds leave out local symbols and debug info, as Xcode's do
             .unsafeFlags(["-Xlinker", "-x", "-Xlinker", "-S"], .when(configuration: .release)),
         ]
         """
-        case .appExtension: """
+        case .appExtension: return """
         [
             // Link to Foundation framework which implements the _NSExtensionMain entrypoint
             .linkedFramework("Foundation"),
@@ -285,7 +307,7 @@ extension Plan.Product {
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../Frameworks",
                 // ...as well as our own
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
-            ]),
+        \(platformVersion)    ]),
             // Release builds leave out local symbols and debug info, as Xcode's do
             .unsafeFlags(["-Xlinker", "-x", "-Xlinker", "-S"], .when(configuration: .release)),
         ]
