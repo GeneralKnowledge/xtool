@@ -24,6 +24,8 @@ struct DevicesCommand: AsyncParsableCommand {
     func run() async throws {
         var shouldPrint = true
         var foundDevices: [ClientDevice] = []
+        var hint: Task<Void, Never>?
+        defer { hint?.cancel() }
         for await devices in try await ClientDevice.search(mode: search) {
             if !devices.isEmpty {
                 foundDevices = devices
@@ -33,6 +35,7 @@ struct DevicesCommand: AsyncParsableCommand {
             if shouldPrint {
                 shouldPrint = false
                 d.out.print("Waiting for devices to be connected...")
+                hint = DeviceWaitHint.start()
             }
         }
 

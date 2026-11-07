@@ -20,6 +20,8 @@ struct ConnectionOptions: ParsableArguments {
 extension ConnectionOptions.WithoutSearchMode {
     func client(searchMode search: ClientDevice.SearchMode) async throws -> ClientDevice {
         d.out.print("Waiting for device to be connected...")
+        let hint = DeviceWaitHint.start()
+        defer { hint.cancel() }
 
         let stream = try await ClientDevice.search(mode: search)
         for await devices in stream {
