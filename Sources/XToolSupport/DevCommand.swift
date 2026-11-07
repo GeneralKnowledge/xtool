@@ -45,6 +45,9 @@ struct PackOperation {
         let configPath = URL(fileURLWithPath: "xtool.yml")
         if FileManager.default.fileExists(atPath: configPath.path) {
             schema = try await PackSchema(url: configPath)
+            for warning in schema.warnings {
+                d.out.print("warning: \(warning)")
+            }
         } else {
             schema = .default
             d.out.print("""
