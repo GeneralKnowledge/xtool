@@ -25,6 +25,41 @@ extension SwiftVersion {
     public var supportsSwiftBuild: Bool {
         self >= SwiftVersion(6, 4)
     }
+
+    /// Oldest Swift that `xtool dev` works with. SwiftPM only vends the
+    /// implicit Darwin SDKs that we rely on on macOS as of Swift 6.1.
+    public static let minimumSupported = SwiftVersion(6, 1)
+
+    /// Oldest Swift that the documented Linux setup is tested with. Older
+    /// versions fall back to the legacy (native) SwiftPM build system.
+    public static let recommendedOnLinux = SwiftVersion(6, 4)
+
+    public enum Compatibility: Equatable, Sendable {
+        case supported
+        case outdated(warning: String)
+        case unsupported(error: String)
+    }
+
+    public func compatibility(isLinux: Bool) -> Compatibility {
+        if self < Self.minimumSupported {
+            return .unsupported(error: """
+            xtool requires Swift \(Self.minimumSupported.shortDescription) or later, but found Swift \(self). \
+            Please update your Swift toolchain.
+            """)
+        }
+        if isLinux && self < Self.recommendedOnLinux {
+            return .outdated(warning: """
+            Swift \(self) is older than the Swift \(Self.recommendedOnLinux.shortDescription) that xtool \
+            supports on Linux; falling back to SwiftPM's legacy build system. \
+            If the build fails, update your Swift toolchain.
+            """)
+        }
+        return .supported
+    }
+
+    private var shortDescription: String {
+        patch == 0 ? "\(major).\(minor)" : description
+    }
 }
 
 extension SwiftVersion: LosslessStringConvertible, CustomStringConvertible {
