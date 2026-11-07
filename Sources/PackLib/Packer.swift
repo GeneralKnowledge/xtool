@@ -14,14 +14,23 @@ public struct Packer: Sendable {
     private func build() async throws {
         let xtoolDir = URL(fileURLWithPath: "xtool")
         let packageDir = xtoolDir.appendingPathComponent(".xtool-tmp")
-        try? FileManager.default.removeItem(at: packageDir)
+        // Update the builder package in place rather than recreating it: fresh
+        // mtimes on unchanged files make SwiftPM recompile the stubs and relink
+        // every product, even when nothing in the app changed.
         try FileManager.default.createDirectory(at: packageDir, withIntermediateDirectories: true)
 
-        if URL(fileURLWithPath: "Packages").dirExists {
-            try FileManager.default.createSymbolicLink(
-                atPath: packageDir.appendingPathComponent("Packages").path,
-                withDestinationPath: "../../Packages"
-            )
+        let packagesLink = packageDir.appendingPathComponent("Packages")
+        let wantsPackagesLink = URL(fileURLWithPath: "Packages").dirExists
+        let hasPackagesLink = (try? FileManager.default.destinationOfSymbolicLink(atPath: packagesLink.path))
+            == "../../Packages"
+        if wantsPackagesLink != hasPackagesLink {
+            try? FileManager.default.removeItem(at: packagesLink)
+            if wantsPackagesLink {
+                try FileManager.default.createSymbolicLink(
+                    atPath: packagesLink.path,
+                    withDestinationPath: "../../Packages"
+                )
+            }
         }
 
         let packageSwift = packageDir.appendingPathComponent("Package.swift")
@@ -54,12 +63,19 @@ public struct Packer: Sendable {
             ]
         )\n
         """
-        try Data(contents.utf8).write(to: packageSwift)
+        try Self.writeIfChanged(Data(contents.utf8), to: packageSwift)
 
-        for product in plan.allProducts {
-            let sources: URL = packageDir.appendingPathComponent("Sources/\(product.targetName)", isDirectory: true)
+        let sourcesDir = packageDir.appendingPathComponent("Sources", isDirectory: true)
+        let targetNames = Set(plan.allProducts.map(\.targetName))
+        // drop targets for products that are no longer part of the plan
+        for stale in (try? FileManager.default.contentsOfDirectory(atPath: sourcesDir.path)) ?? []
+            where !targetNames.contains(stale) {
+            try FileManager.default.removeItem(at: sourcesDir.appendingPathComponent(stale))
+        }
+        for targetName in targetNames {
+            let sources = sourcesDir.appendingPathComponent(targetName, isDirectory: true)
             try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
-            try Data().write(to: sources.appendingPathComponent("stub.c", isDirectory: false))
+            try Self.writeIfChanged(Data(), to: sources.appendingPathComponent("stub.c", isDirectory: false))
         }
 
         let buildConfig = try await buildSettings
@@ -216,6 +232,13 @@ public struct Packer: Sendable {
             )
             try encodedPlist.write(to: infoPath)
         }
+    }
+
+    /// Writes `data` unless the file already holds exactly that, so its mtime
+    /// (which SwiftPM uses to decide what to rebuild) only changes with its contents.
+    static func writeIfChanged(_ data: Data, to url: URL) throws {
+        if let existing = try? Data(contentsOf: url), existing == data { return }
+        try data.write(to: url)
     }
 
     static func cfBundleSupportedPlatforms(for triple: String) -> [String] {
