@@ -22,6 +22,22 @@ struct PackOperation {
 
     static let defaultTriple = "arm64-apple-ios"
 
+    static func checkSwiftVersion() async throws {
+        #if os(Linux)
+        let isLinux = true
+        #else
+        let isLinux = false
+        #endif
+        switch try await SwiftVersion.current.compatibility(isLinux: isLinux) {
+        case .supported:
+            break
+        case .outdated(let warning):
+            d.out.print("warning: \(warning)")
+        case .unsupported(let error):
+            throw Console.Error(error)
+        }
+    }
+
     var triple: String?
     var buildOptions = BuildOptions(configuration: .debug)
     var xcode = false
@@ -36,6 +52,8 @@ struct PackOperation {
             else {
             throw Console.Error("Could not find Package.swift in this directory.")
         }
+
+        try await Self.checkSwiftVersion()
 
         try await EnsureSDKOperation(quiet: true).run()
 

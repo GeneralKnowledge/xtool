@@ -84,3 +84,19 @@ func testSwiftVersionComparisonEquality(lhs: SwiftVersion, rhs: SwiftVersion) {
     #expect(lhs <= rhs)
     #expect(lhs >= rhs)
 }
+
+@Test func swiftVersionCompatibility() {
+    #expect(SwiftVersion(6, 0, 3).compatibility(isLinux: false) == .unsupported(error: """
+    xtool requires Swift 6.1 or later, but found Swift 6.0.3. Please update your Swift toolchain.
+    """))
+    #expect(SwiftVersion(6, 1).compatibility(isLinux: false) == .supported)
+    #expect(SwiftVersion(6, 2, 3).compatibility(isLinux: false) == .supported)
+
+    guard case .outdated(let warning) = SwiftVersion(6, 2, 3).compatibility(isLinux: true) else {
+        Issue.record("expected a warning for Swift 6.2.3 on Linux")
+        return
+    }
+    #expect(warning.contains("Swift 6.2.3 is older than the Swift 6.4"))
+    #expect(SwiftVersion(6, 4).compatibility(isLinux: true) == .supported)
+    #expect(SwiftVersion(6, 0).compatibility(isLinux: true) != .supported)
+}
